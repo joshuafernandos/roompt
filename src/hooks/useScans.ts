@@ -19,11 +19,14 @@ export interface Scan {
 
 export function useScans() {
   const [scans, setScans] = useState<Scan[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const load = useCallback(async () => {
+    setIsLoading(true)
     const res = await fetch('/api/scans')
     if (!res.ok) throw new Error(`Failed to load scans: ${res.status}`)
     setScans(await res.json())
+    setIsLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -56,5 +59,5 @@ export function useScans() {
     }
   }, [scans])
 
-  return { scans, addScan, deleteScan }
+  return { scans, addScan, deleteScan, isLoading }
 }

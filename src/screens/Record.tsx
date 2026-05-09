@@ -97,7 +97,7 @@ export default function Record() {
       {state === 'error' && <ErrorOverlay message={cameraError} onRetry={() => { setCameraError(null); startCamera() }} />}
       {state === 'recording' && <RecordingTimer elapsed={elapsed} />}
 
-      <div className="absolute bottom-0 inset-x-0 z-20 pb-safe">
+      <div className="absolute bottom-0 inset-x-0 z-20">
         {(state === 'previewing' || state === 'recording') && (
           <RecordControls
             recording={state === 'recording'}

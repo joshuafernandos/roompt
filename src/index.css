@@ -25,3 +25,8 @@ body {
 .pb-safe {
   padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
 }
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
