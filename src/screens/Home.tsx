@@ -1,32 +1,58 @@
-import { useAppStore } from '../store/useAppStore'
+import { useNavigate } from 'react-router-dom'
+import { useScans } from '../hooks/useScans'
+import { Camera } from 'lucide-react'
+
+function formatDate(ts: number) {
+  const d = new Date(ts)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const isYesterday = d.toDateString() === yesterday.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (isToday) return `Today, ${time}`
+  if (isYesterday) return `Yesterday, ${time}`
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time
+}
 
 export default function Home() {
-  const navigate = useAppStore((s) => s.navigate)
+  const navigate = useNavigate()
+  const { scans } = useScans()
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg text-white px-6 pt-16 pb-safe">
-      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
-        <div className="mb-12">
-          <h1 className="text-4xl font-semibold tracking-tight mb-2">Roompt</h1>
-          <p className="text-slate-400 text-base">
-            Scan a space. Prompt what to build.
-          </p>
-        </div>
+    <div className="flex flex-col min-h-dvh px-6 pt-14 pb-28">
+      <h1 className="text-6xl text-white font-semibold mb-4">Roompt</h1>
+      <p className="text-white/40 mb-8">Your scanned spaces</p>
 
-        <button
-          onClick={() => navigate('record')}
-          className="w-full bg-accent hover:bg-accent-hover active:bg-accent-active text-white font-medium text-base rounded-xl py-4 transition-colors"
-        >
-          New Scan
-        </button>
-      </div>
-
-      <div className="mt-8 max-w-sm mx-auto w-full">
-        <p className="text-slate-500 text-sm mb-4">Recent scans</p>
-        <div className="bg-surface rounded-xl px-4 py-8 text-center">
-          <p className="text-slate-500 text-sm">No scans yet</p>
+      {scans.length === 0 ? (
+        <p className="text-white/30 text-sm text-center mt-20">No scans yet. Tap the camera to get started.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {scans.map((scan) => (
+            <div
+              key={scan.id}
+              className="flex items-center justify-between bg-white/5 rounded-2xl px-4 py-4 active:bg-white/10 transition-colors"
+            >
+              <div>
+                <p className="text-white font-medium text-base">{scan.label}</p>
+                <p className="text-white/40 text-xs mt-0.5">{formatDate(scan.createdAt)}</p>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M6 3L12 9L6 15" stroke="white" strokeOpacity="0.3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
+
+      <button
+        onClick={() => navigate("/record")}
+        className="fixed bottom-8 right-8 z-50 w-14 h-14 rounded-xl p-2 rounded-full bg-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+        style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+        aria-label="New scan"
+      >
+        <Camera className="w-6 h-6 text-black" />
+      </button>
     </div>
   )
 }

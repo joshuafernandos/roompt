@@ -1,11 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-active: #2563eb;
+  --color-bg: #0a0a0a;
+  --font-sans: "DM Sans", sans-serif;
 }
 
 * {
@@ -14,9 +12,9 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  background: #0f172a;
+  background: var(--color-bg);
 }
 
 #root {

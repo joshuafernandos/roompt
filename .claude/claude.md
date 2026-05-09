@@ -1,71 +1,36 @@
 # Roompt
 
 ## What to build
-A PWA called **Roompt**. User records a space with their phone → AI analyses it → renders a 3D schematic → user prompts what they want to build → AI places objects + generates a plan.
+A PWA called **Roompt**. User records a space with their phone → AI analyses it → stores the scan → user can view all scans on the home screen.
 
 ---
 
 ## Stack
-React + TypeScript + Tailwind + React Three Fiber + Zustand. Single page, state-driven navigation. No router needed.
+- **Frontend:** React + TypeScript + Tailwind + React Router v7
+- **Database:** `better-sqlite3` → `db/roompt.db`, served via a Vite plugin (`sqlitePlugin` in `vite.config.ts`) that attaches `/api` middleware directly to the Vite dev server
+- **No global state** — data lives in SQLite, fetched via `/api`
+- `npm run dev` is just `vite` — no separate server process needed
 
 ---
 
-## 4 Screens
+## Screens
 
-**1. Home** — App name, "New Scan" button, recent scans list from IndexedDB.
+**1. Home** (`/`) — Title, list of scans from SQLite sorted newest first. Empty state when no scans. Floating camera FAB bottom-right navigates to Record.
 
-**2. Record** — Full-screen camera via `MediaRecorder` API. Record button, video preview, "Analyse this →" button.
+**2. Record** (`/record`) — Full-screen camera via `MediaRecorder` API. States: `idle → requesting → previewing → recording → review → error`. Back button stops tracks and returns home. "Analyse this →" navigates to Processing.
 
-**3. Processing** — Extract 5 frames from video (Canvas API), send to Claude vision, show progress. Claude returns space JSON (dimensions, walls, floor, features).
-
-**4. Viewer** — Three.js scene showing procedural room (floor + walls + feature markers). Prompt bar at bottom. User types e.g. "add a couch and TV". Claude returns object positions + build plan. Objects appear as labelled 3D boxes. Slide-up plan panel.
+**3. Processing** (`/processing`) — Runs through 4 mock steps, saves scan to SQLite via `addScan`, navigates home on completion.
 
 ---
 
-## Visual Style
-- Dark UI — background `#0f172a`, cards `#1e293b`
-- Accent: electric blue `#3b82f6`
-- Clean sans-serif, generous whitespace
-- Minimal — no decoration, everything functional
-- Mobile-first, safe-area aware
+## Key files
+- `src/hooks/useScans.ts` — `RoomData` type, `Scan` type, `useScans()` hook (load / addScan / deleteScan via `/api/scans`)
+- `src/hooks/useIsMobile.ts` — mobile detection, gates the app
+- `vite.config.ts` — includes `sqlitePlugin()` which mounts `/api/scans` middleware and manages the SQLite db
+- `src/screens/Record.tsx` — camera logic + small local components (BackButton, RecordControls, etc.)
 
 ---
 
-## Mock Data (hardcode for prototype)
-
-```json
-{
-  "spaceType": "room",
-  "estimatedWidth": 5,
-  "estimatedLength": 4,
-  "estimatedHeight": 2.7,
-  "floorType": "timber",
-  "wallFeatures": [
-    { "wall": "north", "features": ["window"] },
-    { "wall": "east", "features": ["door"] }
-  ],
-  "constraints": ["radiator south wall"]
-}
-```
-
-Mock prompt response — user types "I want a desk setup":
-```json
-{
-  "objects": [
-    { "id": "obj_1", "name": "Desk", "x": 1.5, "y": 0, "z": -1, "rotationY": 0, "width": 1.4, "depth": 0.7, "height": 0.75, "colour": "#94a3b8" },
-    { "id": "obj_2", "name": "Chair", "x": 1.5, "y": 0, "z": -0.1, "rotationY": 180, "width": 0.6, "depth": 0.6, "height": 0.9, "colour": "#64748b" }
-  ],
-  "plan": {
-    "summary": "A clean desk setup using the north wall light.",
-    "steps": [
-      { "step": 1, "title": "Position desk", "detail": "Place desk against north wall to use natural light.", "time": "20 min" },
-      { "step": 2, "title": "Set up chair", "detail": "Position chair 60cm from desk, facing north.", "time": "5 min" }
-    ]
-  }
-}
-```
-
----
-
-## Deliver
-Single `.jsx` artifact, no required props, all mock data hardcoded, all screens navigable, objects rendered in 3D scene, plan panel slide-up working.
+## React Best Practices
+- **Custom hooks always go in `src/hooks/`** as their own file. Never define hooks inline inside a component or page file.
+- **Navigation uses React Router** — always use `useNavigate` from `react-router-dom`. Never store current screen/route in component state.
