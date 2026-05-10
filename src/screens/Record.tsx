@@ -84,12 +84,12 @@ export default function Record() {
   }
 
   const analyse = () => {
-    if (recordedBlob) navigate('/processing')
+    if (recordedBlob) navigate('/processing', { state: { blob: recordedBlob } })
   }
 
   return (
     <div className="relative flex flex-col min-h-dvh bg-black overflow-hidden">
-      <BackButton onPress={() => { streamRef.current?.getTracks().forEach((t) => t.stop()); navigate('/') }} />
+      <BackButton onClick={() => { streamRef.current?.getTracks().forEach((t) => t.stop()); navigate('/') }} />
 
       <video ref={videoRef} playsInline className="absolute inset-0 w-full h-full object-cover" />
 
@@ -112,14 +112,14 @@ export default function Record() {
   )
 }
 
-function BackButton({ onPress }: { onPress: () => void }) {
+function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
-      onClick={onPress}
-      className="absolute top-8 left-8 z-20 p-2 rounded-xl bg-white w-14 h-14 backdrop-blur-sm flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+      onClick={onClick}
+      className="absolute top-8 left-8 z-20 p-2 rounded-xl bg-white/10 active:bg-white/20 transition-colors"
       aria-label="Back"
     >
-      <ArrowLeft />
+      <ArrowLeft className="w-5 h-5 text-white" />
     </button>
   )
 }

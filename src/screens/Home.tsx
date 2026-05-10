@@ -8,11 +8,12 @@ function ScanRow({
   scan,
   onDelete,
 }: {
-  scan: { id: string; label: string; createdAt: number };
-  onDelete: (id: string) => void;
+  scan: { id: string; label: string; createdAt: number }
+  onDelete: (id: string) => void
 }) {
-  const { offset, handlers, isOpen } = useSwipeMotion();
-  const DELETE_WIDTH = 72;
+  const navigate = useNavigate()
+  const { offset, handlers, isOpen } = useSwipeMotion()
+  const DELETE_WIDTH = 72
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
@@ -27,22 +28,21 @@ function ScanRow({
 
       <div
         {...handlers}
+        onClick={() => !isOpen && navigate(`/scan/${scan.id}`)}
         style={{
           transform: `translateX(${offset}px)`,
-          transition: isOpen ? "none" : "transform 0.25s ease",
+          transition: isOpen ? 'none' : 'transform 0.25s ease',
         }}
-        className="relative flex items-center justify-between bg-[#0a0a0a] rounded-2xl px-4 py-4 border border-white/5"
+        className="relative flex items-center justify-between rounded-2xl px-4 py-4 border border-white/5 cursor-pointer bg-bg"
       >
         <div>
           <p className="text-white font-medium text-base">{scan.label}</p>
-          <p className="text-white/40 text-xs mt-0.5">
-            {formatDate(scan.createdAt)}
-          </p>
+          <p className="text-white/40 text-xs mt-0.5">{formatDate(scan.createdAt)}</p>
         </div>
         <ChevronRight className="w-[18px] h-[18px] text-white/30" />
       </div>
     </div>
-  );
+  )
 }
 
 export default function Home() {
