@@ -9,12 +9,12 @@ export const DEFAULT_ROOM_WIDTH = 4.0
 export const DEFAULT_ROOM_LENGTH = 3.5
 export const DEFAULT_ROOM_HEIGHT = 2.7
 
-// ── Panorama sphere (equirectangular 360°) ────────────────────────────────────
-export const PANO_SPHERE_RADIUS = 50
-export const PANO_SPHERE_SEGMENTS = 128
-export const PANO_FURNITURE_SCALE = 0.7    // fraction of sphere radius used for room floor
-export const PANO_EQUIRECT_WIDTH = 4096    // equirectangular canvas width (height = width / 2)
-export const PANO_FRAME_HFOV_DEG = 55      // assumed phone-camera horizontal FOV per frame
+// ── Recording playback (video-backdrop Scan view) ─────────────────────────────
+// How much horizontal rotation a full scrub of the recording corresponds to.
+// Used by RoomScene (camera yaw) AND pixel-anchor → world-coord conversion so
+// the 3D scene and the recorded footage agree on which yaw matches which frame.
+export const ASSUMED_PAN_RAD = Math.PI
+export const FRAME_HFOV_DEG = 55           // assumed per-frame camera horizontal FOV
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 export const CAM_FOV = 75

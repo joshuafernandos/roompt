@@ -11,6 +11,11 @@ export interface RoomObject {
   depth: number
   height: number
   color?: string
+  modelUrl?: string  // optional Meshy-generated GLB (served from /models/*.glb)
+  // Optional anchor pointing at the object's centre in the recorded footage.
+  // Set by Claude when the object references something visible in the video
+  // (e.g. "change my door"). Converted to (x, z) world coords on the client.
+  pixelAnchor?: { frameIndex: number; pixelX: number; pixelY: number }
 }
 
 export interface RoomData {
@@ -31,6 +36,7 @@ export interface Scan {
   createdAt: number
   roomData: RoomData
   frames?: string[]
+  videoUrl?: string | null
 }
 
 export function useScans() {

@@ -47,8 +47,21 @@ export default function Processing() {
         // Step 3: Save and navigate
         setStep(3)
         const scanId = await addScan(roomData, frames)
-        await new Promise((r) => setTimeout(r, 300))
 
+        // Persist the raw recording so the Scan view can play it back as the
+        // backdrop (much better than stitched frames). Best-effort: a failed
+        // upload still leaves the scan usable via the procedural fallback.
+        if (blob) {
+          try {
+            await fetch(`/api/scans/${scanId}/video`, {
+              method: 'POST',
+              headers: { 'Content-Type': blob.type || 'video/webm' },
+              body: blob,
+            })
+          } catch { /* keep going, video is optional */ }
+        }
+
+        await new Promise((r) => setTimeout(r, 300))
         navigate(`/scan/${scanId}`, { replace: true })
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')

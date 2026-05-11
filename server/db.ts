@@ -7,6 +7,7 @@ export interface ScanRow {
   created_at: number
   room_data: string
   frames: string
+  video_ext: string | null
 }
 
 let db: Database.Database
@@ -21,15 +22,20 @@ export function getDb(): Database.Database {
         label TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         room_data TEXT NOT NULL,
-        frames TEXT NOT NULL DEFAULT '[]'
+        frames TEXT NOT NULL DEFAULT '[]',
+        video_ext TEXT
       )
     `)
-    // migration for existing DBs without the frames column
-    try {
-      db.exec(`ALTER TABLE scans ADD COLUMN frames TEXT NOT NULL DEFAULT '[]'`)
-    } catch { /* column already exists */ }
+    // migrations for existing DBs
+    try { db.exec(`ALTER TABLE scans ADD COLUMN frames TEXT NOT NULL DEFAULT '[]'`) } catch { /* exists */ }
+    try { db.exec(`ALTER TABLE scans ADD COLUMN video_ext TEXT`) } catch { /* exists */ }
   }
   return db
+}
+
+export function dbSetVideoExt(id: string, ext: string): boolean {
+  const result = getDb().prepare('UPDATE scans SET video_ext = ? WHERE id = ?').run(ext, id)
+  return result.changes > 0
 }
 
 export function dbGetScans() {

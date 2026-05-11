@@ -104,23 +104,17 @@ rug: 1.6×0.02×2.2
 
 COLORS: use muted, realistic hex colors that complement the wall color in the room data. No pure black or pure white.
 
-Return only new objects the user asked for. No markdown, no commentary — pure JSON only.`
+CHANGE / REPLACE REQUESTS — treat as a new object overlay:
+If the user says "change my door" / "replace the window" / "swap the floor", they want a NEW object that visually replaces the original. Return a new object of the requested type, dimensioned to match the original. Do not refuse and do not return an empty objects array — the renderer overlays this 3D object on top of the recorded footage.
 
-export interface FrameEditData {
-  frameIndex: number
-  elementType: 'door' | 'window' | 'wall' | 'floor' | 'other'
-  region: { x: number; y: number; width: number; height: number }
-  style: {
-    primaryColor: string
-    secondaryColor: string
-    material: 'wood' | 'metal' | 'glass' | 'painted' | 'composite'
-    variant: 'modern' | 'traditional' | 'minimal' | 'panel' | 'frosted'
-    hasHandle: boolean
-    panelCount: number
-    handleSide: 'left' | 'right'
-  }
-  plan: string
-}
+PIXEL ANCHOR (when frames are provided):
+If the request references something visible in the recording (e.g. "change my door", "put a TV on that wall", "replace the window"), AND video frames are included in the message, you MUST add a "pixelAnchor" field to that object pointing at the centre of the referenced element in the clearest frame:
+  "pixelAnchor": { "frameIndex": 2, "pixelX": 0.42, "pixelY": 0.55 }
+  • frameIndex — 0-based index of the frame that best shows the element
+  • pixelX, pixelY — normalised coords 0.0–1.0 from the frame's top-left
+The client uses this to align the 3D object with the actual position in the recording. Omit pixelAnchor for purely abstract additions ("add a sofa") — those use the abstract room x/z coords instead.
+
+Return only new objects the user asked for. No markdown, no commentary — pure JSON only.`
 
 function extractJSON(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -166,88 +160,22 @@ export async function analyseRoom(frames: string[], apiKey: string): Promise<unk
   return result
 }
 
-export async function editRoomElement(
-  frames: string[],
+export async function promptFurniture(
+  roomData: unknown,
   prompt: string,
   apiKey: string,
-): Promise<FrameEditData> {
+  frames: string[] = [],
+): Promise<{ objects: unknown[]; plan: string }> {
   const client = makeClient(apiKey)
 
   // Interleave "Frame N:" labels with image blocks so Claude can reference by index
-  const imageContent = frames.slice(0, AI_MAX_FRAMES).flatMap((data, i) => [
+  const frameContent = frames.slice(0, AI_MAX_FRAMES).flatMap((data, i) => [
     { type: 'text' as const, text: `Frame ${i}:` },
     {
       type: 'image' as const,
       source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data },
     },
   ])
-
-  const locatePrompt = `The user wants to: "${prompt}"
-
-Look at every frame and find the element to change. Return ONLY valid JSON:
-
-{
-  "frameIndex": 0,
-  "elementType": "door",
-  "region": { "x": 0.30, "y": 0.08, "width": 0.14, "height": 0.58 },
-  "style": {
-    "primaryColor": "#f5f5f0",
-    "secondaryColor": "#dedad2",
-    "material": "painted",
-    "variant": "modern",
-    "hasHandle": true,
-    "panelCount": 0,
-    "handleSide": "right"
-  },
-  "plan": "Replacing the existing door with a modern flat white painted door."
-}
-
-RULES:
-frameIndex — 0-based index of the frame that best shows the element to change.
-elementType — exactly one of: "door" / "window" / "wall" / "floor" / "other".
-region — normalised coords (0.0–1.0), (0,0) = top-left of the frame:
-  • x,y: top-left corner of the bounding box (include the door/window frame in the box)
-  • width,height: box dimensions
-style — interpret the user's request to determine the desired replacement:
-  • primaryColor: main surface hex (door face, wall paint, floor boards)
-  • secondaryColor: trim/frame hex (slightly darker or complementary)
-  • material: "wood" | "metal" | "glass" | "painted" | "composite"
-  • variant: "modern" (flat) | "traditional" (ornate) | "minimal" (very simple) | "panel" (raised panels) | "frosted" (frosted glass)
-  • hasHandle: true for doors, false for walls/floors/windows
-  • panelCount: 0 for modern/minimal/glass, 2 for traditional, 4 for classic
-  • handleSide: "left" or "right" based on what you see in the frame
-plan — one sentence describing what will change.
-
-Return only the JSON. No markdown, no extra text.`
-
-  const message = await client.messages.create({
-    model: AI_MODEL,
-    max_tokens: AI_MAX_TOKENS,
-    messages: [{ role: 'user', content: [...imageContent, { type: 'text', text: locatePrompt }] }],
-  })
-
-  const text = message.content.find((b) => b.type === 'text')?.text ?? ''
-  const raw = extractJSON(text) as FrameEditData
-
-  // Clamp to valid ranges
-  const n = frames.length
-  raw.frameIndex = Math.max(0, Math.min(n - 1, raw.frameIndex ?? 0))
-  const r = raw.region ?? { x: 0.2, y: 0.1, width: 0.15, height: 0.6 }
-  r.x = Math.max(0, Math.min(0.95, r.x))
-  r.y = Math.max(0, Math.min(0.95, r.y))
-  r.width = Math.max(0.03, Math.min(1 - r.x, r.width))
-  r.height = Math.max(0.03, Math.min(1 - r.y, r.height))
-  raw.region = r
-
-  return raw
-}
-
-export async function promptFurniture(
-  roomData: unknown,
-  prompt: string,
-  apiKey: string,
-): Promise<{ objects: unknown[]; plan: string }> {
-  const client = makeClient(apiKey)
 
   const message = await client.messages.create({
     model: AI_MODEL,
@@ -256,7 +184,10 @@ export async function promptFurniture(
     messages: [
       {
         role: 'user',
-        content: `Room: ${JSON.stringify(roomData)}\n\nRequest: "${prompt}"`,
+        content: [
+          ...frameContent,
+          { type: 'text', text: `Room: ${JSON.stringify(roomData)}\n\nRequest: "${prompt}"` },
+        ],
       },
     ],
   })

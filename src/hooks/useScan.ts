@@ -28,18 +28,5 @@ export function useScan(id: string) {
     [id],
   )
 
-  const updateFrames = useCallback(
-    async (frames: string[]) => {
-      const res = await fetch(`/api/scans/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ frames }),
-      })
-      if (!res.ok) throw new Error('Failed to update frames')
-      setScan((prev) => (prev ? { ...prev, frames } : prev))
-    },
-    [id],
-  )
-
-  return { scan, updateObjects, updateFrames, isLoading }
+  return { scan, updateObjects, isLoading }
 }

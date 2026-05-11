@@ -26,3 +26,11 @@ dist-ssr
 # Environment variables
 .envdb/*.db
 .env
+
+# Meshy-generated GLBs (regenerated on demand)
+public/models/*.glb
+
+# Raw scan recordings
+public/videos/*.webm
+public/videos/*.mp4
+public/videos/*.mov
