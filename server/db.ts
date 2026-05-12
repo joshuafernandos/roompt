@@ -54,13 +54,13 @@ export function dbInsertScan(id: string, label: string, createdAt: number, roomD
     .run(id, label, createdAt, JSON.stringify(roomData), JSON.stringify(frames))
 }
 
-export function dbPatchObjects(id: string, objects: unknown[]): boolean {
+export function dbAppendEdit(id: string, edit: unknown): boolean {
   const row = getDb().prepare('SELECT room_data FROM scans WHERE id = ?').get(id) as
     | { room_data: string }
     | undefined
   if (!row) return false
   const roomData = JSON.parse(row.room_data)
-  roomData.objects = objects
+  roomData.edits = [...(roomData.edits ?? []), edit]
   getDb().prepare('UPDATE scans SET room_data = ? WHERE id = ?').run(JSON.stringify(roomData), id)
   return true
 }

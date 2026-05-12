@@ -10,11 +10,9 @@ export const DEFAULT_ROOM_LENGTH = 3.5
 export const DEFAULT_ROOM_HEIGHT = 2.7
 
 // ── Recording playback (video-backdrop Scan view) ─────────────────────────────
-// How much horizontal rotation a full scrub of the recording corresponds to.
-// Used by RoomScene (camera yaw) AND pixel-anchor → world-coord conversion so
-// the 3D scene and the recorded footage agree on which yaw matches which frame.
+// Kept for backwards-compat with previous yaw-mapping callers. The current
+// RoomScene only uses video time, so this is informational.
 export const ASSUMED_PAN_RAD = Math.PI
-export const FRAME_HFOV_DEG = 55           // assumed per-frame camera horizontal FOV
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 export const CAM_FOV = 75

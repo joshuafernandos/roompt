@@ -1,12 +1,12 @@
 import { Plugin, loadEnv } from 'vite'
 import fs from 'fs'
 import path from 'path'
-import { dbGetScans, dbGetScan, dbInsertScan, dbPatchObjects, dbPatchFrames, dbDeleteScan, dbSetVideoExt } from './db'
-import { analyseRoom, promptFurniture } from './ai'
-import { generateModel } from './meshy'
+import { dbGetScans, dbGetScan, dbInsertScan, dbAppendEdit, dbPatchFrames, dbDeleteScan, dbSetVideoExt } from './db'
+import { analyseRoom } from './ai'
+import { applyEdit } from './edit'
 import {
   BODY_MAX_BYTES, BODY_SCAN_MAX_BYTES, BODY_ANALYSE_MAX_BYTES, BODY_VIDEO_MAX_BYTES,
-  LABEL_MAX_LENGTH, MESHY_TYPE_MAX_LENGTH, VIDEOS_DIR,
+  BODY_EDIT_MAX_BYTES, LABEL_MAX_LENGTH, VIDEOS_DIR, EDITS_DIR,
 } from './config'
 
 function mimeToExt(mime: string): string {
@@ -62,7 +62,7 @@ export function sqlitePlugin(): Plugin {
     configureServer(server) {
       const env = loadEnv('', process.cwd(), '')
       const anthropicKey = env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY
-      const meshyKey = env.MESHY_API_KEY || process.env.MESHY_API_KEY
+      const geminiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY
 
       // ── /api/scans ────────────────────────────────────────────────────────
       server.middlewares.use('/api/scans', (req, res, next) => {
@@ -121,6 +121,36 @@ export function sqlitePlugin(): Plugin {
           return
         }
 
+        // POST /api/scans/:id/edit  — runs the Claude→Gemini edit pipeline
+        const editMatch = url.match(/^\/([0-9a-f-]{36})\/edit$/)
+        if (req.method === 'POST' && editMatch) {
+          const id = editMatch[1]
+          if (!isValidUUID(id)) { sendJSON(res, 400, { error: 'Invalid id' }); return }
+          if (!anthropicKey) { sendJSON(res, 503, { error: 'ANTHROPIC_API_KEY not configured' }); return }
+          if (!geminiKey)    { sendJSON(res, 503, { error: 'GEMINI_API_KEY not configured' });    return }
+          readBody(req, BODY_EDIT_MAX_BYTES, async (err, body) => {
+            if (err) { sendJSON(res, 413, { error: 'Request body too large' }); return }
+            try {
+              const { prompt } = JSON.parse(body) as { prompt?: unknown }
+              if (typeof prompt !== 'string' || !prompt.trim()) {
+                return sendJSON(res, 400, { error: 'Invalid prompt' })
+              }
+              const row = dbGetScan(id)
+              if (!row) return sendJSON(res, 404, { error: 'Scan not found' })
+              const frames = JSON.parse(row.frames ?? '[]') as string[]
+              if (frames.length === 0) {
+                return sendJSON(res, 400, { error: 'Scan has no frames to edit' })
+              }
+              const edit = await applyEdit(id, frames, prompt.trim(), anthropicKey, geminiKey)
+              dbAppendEdit(id, edit)
+              sendJSON(res, 200, edit)
+            } catch (e) {
+              sendJSON(res, 500, { error: e instanceof Error ? e.message : 'Edit failed' })
+            }
+          })
+          return
+        }
+
         // POST /api/scans
         if (req.method === 'POST' && isRoot) {
           readBody(req, BODY_SCAN_MAX_BYTES, (err, body) => {
@@ -141,7 +171,7 @@ export function sqlitePlugin(): Plugin {
           return
         }
 
-        // PATCH /api/scans/:id  — accepts { objects? } and/or { frames? }
+        // PATCH /api/scans/:id  — accepts { frames? }
         if (req.method === 'PATCH' && idMatch) {
           const id = idMatch[1]
           if (!isValidUUID(id)) { sendJSON(res, 400, { error: 'Invalid id' }); return }
@@ -149,18 +179,10 @@ export function sqlitePlugin(): Plugin {
           readBody(req, patchLimit, (err, body) => {
             if (err) { sendJSON(res, 413, { error: 'Request body too large' }); return }
             try {
-              const payload = JSON.parse(body)
-              const { objects, frames } = payload
-              if (objects === undefined && frames === undefined)
-                return sendJSON(res, 400, { error: 'Nothing to update' })
-              if (objects !== undefined && !Array.isArray(objects))
-                return sendJSON(res, 400, { error: 'Invalid objects' })
-              if (frames !== undefined && !Array.isArray(frames))
-                return sendJSON(res, 400, { error: 'Invalid frames' })
-
-              let found = true
-              if (objects !== undefined) found = dbPatchObjects(id, objects)
-              if (found && frames !== undefined) found = dbPatchFrames(id, frames)
+              const { frames } = JSON.parse(body)
+              if (frames === undefined) return sendJSON(res, 400, { error: 'Nothing to update' })
+              if (!Array.isArray(frames)) return sendJSON(res, 400, { error: 'Invalid frames' })
+              const found = dbPatchFrames(id, frames)
               found ? sendJSON(res, 200, { ok: true }) : sendJSON(res, 404, { error: 'Not found' })
             } catch { sendJSON(res, 400, { error: 'Invalid JSON' }) }
           })
@@ -177,6 +199,12 @@ export function sqlitePlugin(): Plugin {
               for (const ext of ['webm', 'mp4', 'mov']) {
                 const p = path.join(VIDEOS_DIR, `${id}.${ext}`)
                 if (fs.existsSync(p)) fs.unlinkSync(p)
+              }
+              // Also clean up any edits saved for this scan.
+              if (fs.existsSync(EDITS_DIR)) {
+                for (const f of fs.readdirSync(EDITS_DIR)) {
+                  if (f.startsWith(`${id}-`)) fs.unlinkSync(path.join(EDITS_DIR, f))
+                }
               }
             }
             ok ? sendJSON(res, 200, { ok: true }) : sendJSON(res, 404, { error: 'Not found' })
@@ -200,47 +228,6 @@ export function sqlitePlugin(): Plugin {
             sendJSON(res, 200, roomData)
           } catch (e) {
             sendJSON(res, 500, { error: e instanceof Error ? e.message : 'Analysis failed' })
-          }
-        })
-      })
-
-      // ── /api/model ────────────────────────────────────────────────────────
-      server.middlewares.use('/api/model', (req, res, next) => {
-        if (req.method !== 'POST') { next(); return }
-        if (!meshyKey) { sendJSON(res, 503, { error: 'MESHY_API_KEY not configured' }); return }
-
-        readBody(req, BODY_MAX_BYTES, async (err, body) => {
-          if (err) { sendJSON(res, 413, { error: 'Request body too large' }); return }
-          try {
-            const { type, label } = JSON.parse(body) as { type?: unknown; label?: unknown }
-            if (typeof type !== 'string' || !type.trim() || type.length > MESHY_TYPE_MAX_LENGTH)
-              return sendJSON(res, 400, { error: 'Invalid type' })
-            if (label !== undefined && (typeof label !== 'string' || label.length > LABEL_MAX_LENGTH))
-              return sendJSON(res, 400, { error: 'Invalid label' })
-            const url = await generateModel(type.trim(), typeof label === 'string' ? label.trim() : undefined, meshyKey)
-            sendJSON(res, 200, { url })
-          } catch (e) {
-            sendJSON(res, 500, { error: e instanceof Error ? e.message : 'Model generation failed' })
-          }
-        })
-      })
-
-      // ── /api/prompt ───────────────────────────────────────────────────────
-      server.middlewares.use('/api/prompt', (req, res, next) => {
-        if (req.method !== 'POST') { next(); return }
-        if (!anthropicKey) { sendJSON(res, 503, { error: 'ANTHROPIC_API_KEY not configured' }); return }
-
-        // Body may include up to AI_MAX_FRAMES base64 JPEGs so Claude can return
-        // a pixelAnchor pointing at the existing object in the recording.
-        readBody(req, BODY_ANALYSE_MAX_BYTES, async (err, body) => {
-          if (err) { sendJSON(res, 413, { error: 'Request body too large' }); return }
-          try {
-            const { roomData, prompt, frames } = JSON.parse(body)
-            const framesArr = Array.isArray(frames) ? frames : []
-            const result = await promptFurniture(roomData, prompt, anthropicKey, framesArr)
-            sendJSON(res, 200, result)
-          } catch (e) {
-            sendJSON(res, 500, { error: e instanceof Error ? e.message : 'Prompt failed' })
           }
         })
       })

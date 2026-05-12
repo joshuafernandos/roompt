@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Scan, RoomObject } from './useScans'
+import type { Scan, FrameEdit } from './useScans'
 
 export function useScan(id: string) {
   const [scan, setScan] = useState<Scan | null>(null)
@@ -13,20 +13,27 @@ export function useScan(id: string) {
       .finally(() => setIsLoading(false))
   }, [id])
 
-  const updateObjects = useCallback(
-    async (objects: RoomObject[]) => {
-      const res = await fetch(`/api/scans/${id}`, {
-        method: 'PATCH',
+  const applyEdit = useCallback(
+    async (prompt: string): Promise<FrameEdit> => {
+      const res = await fetch(`/api/scans/${id}/edit`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objects }),
+        body: JSON.stringify({ prompt }),
       })
-      if (!res.ok) throw new Error('Failed to update objects')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? `Edit failed (${res.status})`)
+      }
+      const edit = (await res.json()) as FrameEdit
       setScan((prev) =>
-        prev ? { ...prev, roomData: { ...prev.roomData, objects } } : prev,
+        prev
+          ? { ...prev, roomData: { ...prev.roomData, edits: [...(prev.roomData.edits ?? []), edit] } }
+          : prev,
       )
+      return edit
     },
     [id],
   )
 
-  return { scan, updateObjects, isLoading }
+  return { scan, applyEdit, isLoading }
 }

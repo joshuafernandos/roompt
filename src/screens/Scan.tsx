@@ -3,77 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Send, Loader2 } from 'lucide-react'
 import { RoomScene } from '@/components/RoomScene'
 import { useScan } from '@/hooks/useScan'
-import type { RoomObject } from '@/hooks/useScans'
-import { pixelAnchorToCoords } from '@/utils/pixelAnchor'
 
 export default function Scan() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { scan, updateObjects, isLoading } = useScan(id!)
+  const { scan, applyEdit, isLoading } = useScan(id!)
   const [prompt, setPrompt] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [plan, setPlan] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const handleAddFurniture = async (userPrompt: string) => {
-    const frames = scan!.frames ?? []
-    const res = await fetch('/api/prompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomData: scan!.roomData, prompt: userPrompt, frames }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.error ?? `Server error ${res.status}`)
-    }
-    const data: { objects: RoomObject[]; plan: string } = await res.json()
-
-    // For objects Claude anchored to a pixel in the recording, override the
-    // abstract room x/z with coords derived from the anchor so they line up
-    // with the actual element on screen.
-    const newObjects = data.objects.map((obj) => {
-      if (obj.pixelAnchor && frames.length > 0) {
-        const { x, z } = pixelAnchorToCoords(obj.pixelAnchor, frames.length, scan!.roomData)
-        return { ...obj, x, z }
-      }
-      return obj
-    })
-
-    const existing = scan!.roomData.objects ?? []
-    const merged = [...existing, ...newObjects]
-    await updateObjects(merged)
-
-    // Fire-and-forget Meshy generation for each new object. As GLBs arrive,
-    // patch the corresponding object's modelUrl and update the scene.
-    void hydrateModels(existing, newObjects)
-    return data.plan
-  }
-
-  const hydrateModels = async (prevObjects: RoomObject[], newObjects: RoomObject[]) => {
-    // Generate GLBs in parallel; PATCH the database sequentially so concurrent
-    // /api/model completions don't clobber each other's modelUrl updates.
-    let current = [...prevObjects, ...newObjects]
-    const tasks = newObjects.map(async (obj) => {
-      const r = await fetch('/api/model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: obj.type, label: obj.label }),
-      })
-      if (!r.ok) return null
-      const { url } = (await r.json()) as { url: string }
-      return { id: obj.id, url }
-    })
-    for (const t of tasks) {
-      try {
-        const result = await t
-        if (!result) continue
-        current = current.map((o) => (o.id === result.id ? { ...o, modelUrl: result.url } : o))
-        await updateObjects(current)
-      } catch {
-        // leave this object with the procedural fallback
-      }
-    }
-  }
 
   const handleSubmit = async () => {
     if (!prompt.trim() || isProcessing || !scan) return
@@ -82,10 +20,10 @@ export default function Scan() {
     const userPrompt = prompt
     setPrompt('')
     try {
-      const resultPlan = await handleAddFurniture(userPrompt)
-      setPlan(resultPlan)
+      const edit = await applyEdit(userPrompt)
+      setPlan(edit.plan)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to process prompt')
+      setError(e instanceof Error ? e.message : 'Failed to apply edit')
       setPrompt(userPrompt)
     } finally {
       setIsProcessing(false)
@@ -179,7 +117,7 @@ function PromptInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
-        placeholder="Add a couch and TV…"
+        placeholder="Change my door, add flowers…"
         className="flex-1 bg-white/10 text-white rounded-2xl px-4 py-3 text-sm outline-none placeholder:text-white/30 focus:bg-white/15 transition-colors"
       />
       <button
